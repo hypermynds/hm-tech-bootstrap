@@ -16,6 +16,7 @@ jobs:
       - name: Validate shell scripts
         run: |
           bash -n build.sh
+          bash -n release.sh
           bash -n payload/Library/Hypermynds/HMTech/bootstrap.sh
           bash -n scripts/postinstall
 

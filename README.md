@@ -1,98 +1,132 @@
 # HM Tech Bootstrap
 
-Pacchetto macOS per completare automaticamente il modello **HM Tech** dopo
-l'installazione del pacchetto ufficiale Homebrew.
+`hm-tech-bootstrap` builds a signed macOS installer package for provisioning a
+standard developer workstation through an MDM solution.
 
-## Software installato
+The package installs a LaunchDaemon that waits for both a logged-in console
+user and Homebrew, then applies an idempotent Brewfile. It is designed to be
+deployed independently from the official Homebrew installer package, in any
+order.
 
-- rig (`r-rig`) per installare e gestire R 4.6.1 dal pacchetto CRAN ufficiale
-- RStudio tramite cask `rstudio`
-- Visual Studio Code tramite cask `visual-studio-code`
-- Docker Desktop tramite cask `docker-desktop`
-- Cyberduck tramite cask `cyberduck`
+## Managed software
 
-Slack, Bitwarden e WireGuard non sono inclusi perché vengono distribuiti dal
-modello HM People.
+- [rig](https://github.com/r-lib/rig) (`r-rig`), with R 4.6.1 pinned as the
+  default CRAN installation
+- RStudio
+- Visual Studio Code
+- Docker Desktop
+- Cyberduck
 
-## Come funziona
+Project-specific R dependencies are intentionally not installed globally. R
+projects should use [`renv`](https://rstudio.github.io/renv/) to make their
+package environment reproducible.
 
-Il pacchetto installa:
+## How it works
+
+The package installs:
 
 - `/Library/Hypermynds/HMTech/Brewfile`
 - `/Library/Hypermynds/HMTech/bootstrap.sh`
 - `/Library/LaunchDaemons/com.hypermynds.hmtech.bootstrap.plist`
 
-Il LaunchDaemon viene avviato ogni cinque minuti finché:
+The LaunchDaemon runs every five minutes until:
 
-1. esiste un utente collegato alla console;
-2. Homebrew è disponibile;
-3. `brew bundle` termina correttamente.
+1. a console user is logged in;
+2. Homebrew is available;
+3. `brew bundle` and the R setup complete successfully.
 
-Homebrew viene eseguito come utente della console tramite il comando ufficiale
-`brew as-console-user`, pensato per i flussi MDM. Dopo `brew bundle`, lo script
-usa `rig` come root per installare R 4.6.1 dal pacchetto CRAN corretto per
-l'architettura del Mac, impostarlo come predefinito e predisporre le librerie R
-per utente. La versione è fissata intenzionalmente: Mac configurati in momenti
-diversi ricevono la stessa baseline. Al
-completamento viene creato `/Library/Hypermynds/HMTech/.completed` e i successivi
-avvii terminano senza effettuare modifiche.
+Homebrew commands run as the console user through `brew as-console-user`, while
+system-level R operations run through `rig`. Successful completion creates
+`/Library/Hypermynds/HMTech/.completed`; later runs exit without changing the
+machine.
 
-## Requisiti
+Logs are written to:
 
-- macOS 14 o successivo
-- Mac Apple Silicon oppure Intel supportato da Homebrew
-- certificato `Installer Certificate (Hypermynds)` presente nel Portachiavi
-- profilo MDM `HM Package Signing 2026` installato sui Mac destinatari
-- Homebrew distribuito tramite il pacchetto ufficiale
-- utente della console amministratore locale durante il bootstrap iniziale
+```text
+/var/log/hypermynds-hmtech-bootstrap.log
+```
 
-## Costruzione del pacchetto
+## Requirements
 
-Sul Mac che contiene l'identità `Installer Certificate (Hypermynds)`:
+- macOS 14 or later
+- Apple Silicon or Intel Mac supported by Homebrew
+- the official Homebrew installer package deployed separately
+- a local administrator logged in during the initial bootstrap
+- a macOS Installer signing identity available on the build Mac
+- the corresponding public certificate trusted by the target devices
+
+## Build
+
+The signing identity expected by `build.sh` is:
+
+```text
+Installer Certificate (Hypermynds)
+```
+
+Build version `1.0.0` with:
 
 ```bash
-cd hm-tech-bootstrap
 ./build.sh 1.0.0
 ```
 
-Il risultato sarà:
+The signed package is written to:
 
 ```text
 dist/hm-tech-bootstrap-1.0.0.pkg
 ```
 
-Lo script mostra anche firma e hash SHA-256.
+`build.sh` verifies the package signature and prints its SHA-256 checksum.
 
-## Registrazione in Apple Business
+## Release
 
-Il repository consigliato è pubblico, per esempio
-`Hypermynds/hm-tech-bootstrap`. Il repository contiene solo sorgenti e non deve
-mai contenere certificati privati o chiavi di firma.
+Releases are created locally so that the private Installer signing key never
+needs to leave the build Mac.
 
-Pubblicare il `.pkg` come asset di una release GitHub pubblica, con URL HTTPS
-diretto e versionato:
+Install and authenticate the GitHub CLI once:
+
+```bash
+brew install gh
+gh auth login
+```
+
+Commit and push all source changes, then create a draft release:
+
+```bash
+./release.sh 1.0.0
+```
+
+The script verifies the repository state, builds and signs the package, creates
+a SHA-256 checksum file, and uploads both assets to a GitHub draft release.
+After reviewing the assets and generated notes, publish it with:
+
+```bash
+gh release edit v1.0.0 --draft=false --latest
+```
+
+To publish immediately instead of creating a draft:
+
+```bash
+./release.sh 1.0.0 --publish
+```
+
+Published packages have stable, versioned URLs such as:
 
 ```text
 https://github.com/Hypermynds/hm-tech-bootstrap/releases/download/v1.0.0/hm-tech-bootstrap-1.0.0.pkg
 ```
 
-Creare poi un pacchetto macOS con:
+Use the package version, identifier `com.hypermynds.hmtech.bootstrap`, direct
+asset URL, and SHA-256 checksum when registering the package with an MDM.
 
-- Nome: `HM Tech Bootstrap`
-- Bundle ID: `com.hypermynds.hmtech.bootstrap`
-- Versione: `1.0.0`
-- Hash: il valore mostrato da `build.sh`
+## Verification
 
-Aggiungere il pacchetto al modello HM Tech. Il bootstrap può essere consegnato
-prima di Homebrew: il LaunchDaemon attende e riprova automaticamente.
-
-## Verifica sul Mac pilota
+Follow the bootstrap log:
 
 ```bash
 sudo tail -f /var/log/hypermynds-hmtech-bootstrap.log
 ```
 
-Al termine:
+Verify the installed software:
 
 ```bash
 rig list
@@ -103,26 +137,28 @@ test -d "/Applications/Docker.app" && echo "Docker OK"
 test -d "/Applications/Cyberduck.app" && echo "Cyberduck OK"
 ```
 
-Per verificare il receipt del pacchetto:
+Verify the installer receipt:
 
 ```bash
 pkgutil --pkg-info com.hypermynds.hmtech.bootstrap
 ```
 
-## Aggiornamenti
+## Updating the baseline
 
-`brew bundle --no-upgrade` installa ciò che manca senza aggiornare
-automaticamente le applicazioni già presenti. `rig` installa la versione R
-indicata da `R_VERSION` nello script e permette in futuro di affiancare o
-cambiare versione senza sostituire manualmente R.framework. Le dipendenze R dei
-singoli progetti vanno versionate con `renv`, non aggiunte globalmente al
-pacchetto. Per
-modificare la dotazione:
+1. Update `payload/Library/Hypermynds/HMTech/Brewfile` or `R_VERSION` in
+   `bootstrap.sh`.
+2. Test the change on a pilot Mac.
+3. Commit and push the source changes.
+4. Create a new semantic version with `release.sh`.
+5. Register and deploy the new package version through the MDM.
 
-1. aggiornare `payload/Library/Hypermynds/HMTech/Brewfile`;
-2. incrementare la versione del pacchetto;
-3. ricostruire, pubblicare con un nuovo URL e aggiornare Apple Business.
+`brew bundle --no-upgrade` installs missing software without upgrading existing
+applications. New R versions are intentional, reviewed changes rather than a
+moving `release` target.
 
-Il certificato Installer locale scade dopo un anno. Prima della scadenza va
-rinnovato e questo pacchetto deve essere firmato nuovamente se è ancora in
-distribuzione.
+## Security
+
+Never commit private keys, PKCS#12 files, signing passwords, or unencrypted
+certificate exports. Release assets are public when the repository is public.
+Only source code and signed installer packages intended for distribution should
+be published here.
