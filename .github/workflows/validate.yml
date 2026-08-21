@@ -1,0 +1,36 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate shell scripts
+        run: |
+          bash -n build.sh
+          bash -n payload/Library/Hypermynds/HMTech/bootstrap.sh
+          bash -n scripts/postinstall
+
+      - name: Validate LaunchDaemon plist
+        run: |
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+
+          path = Path("payload/Library/LaunchDaemons/com.hypermynds.hmtech.bootstrap.plist")
+          with path.open("rb") as stream:
+              payload = plistlib.load(stream)
+
+          assert payload["Label"] == "com.hypermynds.hmtech.bootstrap"
+          assert payload["ProgramArguments"] == [
+              "/Library/Hypermynds/HMTech/bootstrap.sh"
+          ]
+          PY

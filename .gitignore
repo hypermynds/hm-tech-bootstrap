@@ -1,0 +1,6 @@
+.DS_Store
+dist/
+*.p12
+*.key
+*PrivateKey*.pem
+InstallerCertificate_*.pem

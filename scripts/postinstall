@@ -1,0 +1,30 @@
+#!/bin/bash
+
+set -u
+
+HM_DIR="/Library/Hypermynds/HMTech"
+PLIST="/Library/LaunchDaemons/com.hypermynds.hmtech.bootstrap.plist"
+LABEL="com.hypermynds.hmtech.bootstrap"
+
+/usr/sbin/chown -R root:wheel "$HM_DIR"
+/bin/chmod 0755 "$HM_DIR" "$HM_DIR/bootstrap.sh"
+/bin/chmod 0644 "$HM_DIR/Brewfile"
+
+/usr/sbin/chown root:wheel "$PLIST"
+/bin/chmod 0644 "$PLIST"
+
+# Docker Desktop pubblica utility in /usr/local. Sui Mac Apple Silicon nuovi
+# prepariamo le directory con i permessi del gruppo admin, evitando richieste
+# interattive per i link CLI. Su Intel /usr/local è anche il prefisso Homebrew:
+# non ne modifichiamo proprietà o permessi.
+if [[ "$(/usr/bin/uname -m)" == "arm64" ]]; then
+  /bin/mkdir -p /usr/local/bin /usr/local/cli-plugins
+  /usr/sbin/chown root:admin /usr/local/bin /usr/local/cli-plugins
+  /bin/chmod 0775 /usr/local/bin /usr/local/cli-plugins
+fi
+
+/bin/launchctl bootout "system/$LABEL" >/dev/null 2>&1 || true
+/bin/launchctl bootstrap system "$PLIST" >/dev/null 2>&1 || true
+/bin/launchctl kickstart -k "system/$LABEL" >/dev/null 2>&1 || true
+
+exit 0

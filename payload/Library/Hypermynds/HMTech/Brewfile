@@ -1,0 +1,6 @@
+brew "r-rig"
+
+cask "rstudio"
+cask "visual-studio-code"
+cask "docker-desktop"
+cask "cyberduck"
