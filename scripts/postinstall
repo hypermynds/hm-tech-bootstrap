@@ -1,10 +1,11 @@
 #!/bin/bash
 
-set -u
+set -euo pipefail
 
 HM_DIR="/Library/Hypermynds/HMTech"
 PLIST="/Library/LaunchDaemons/com.hypermynds.hmtech.bootstrap.plist"
 LABEL="com.hypermynds.hmtech.bootstrap"
+MARKER_APP="/Applications/Utilities/HM Tech Bootstrap.app"
 
 /usr/sbin/chown -R root:wheel "$HM_DIR"
 /bin/chmod 0755 "$HM_DIR" "$HM_DIR/bootstrap.sh"
@@ -12,6 +13,15 @@ LABEL="com.hypermynds.hmtech.bootstrap"
 
 /usr/sbin/chown root:wheel "$PLIST"
 /bin/chmod 0644 "$PLIST"
+
+if [[ ! -d "$MARKER_APP" ]]; then
+  echo "App-marker non trovata: $MARKER_APP" >&2
+  exit 1
+fi
+
+/usr/sbin/chown -R root:wheel "$MARKER_APP"
+/bin/chmod 0755 "$MARKER_APP/Contents/MacOS/HMTechBootstrap"
+/bin/chmod 0644 "$MARKER_APP/Contents/Info.plist"
 
 # Docker Desktop pubblica utility in /usr/local. Sui Mac Apple Silicon nuovi
 # prepariamo le directory con i permessi del gruppo admin, evitando richieste
@@ -24,7 +34,10 @@ if [[ "$(/usr/bin/uname -m)" == "arm64" ]]; then
 fi
 
 /bin/launchctl bootout "system/$LABEL" >/dev/null 2>&1 || true
-/bin/launchctl bootstrap system "$PLIST" >/dev/null 2>&1 || true
-/bin/launchctl kickstart -k "system/$LABEL" >/dev/null 2>&1 || true
+
+if ! /bin/launchctl bootstrap system "$PLIST"; then
+  echo "Impossibile registrare il LaunchDaemon $LABEL" >&2
+  exit 1
+fi
 
 exit 0

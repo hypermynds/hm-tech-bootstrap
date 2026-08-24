@@ -6,46 +6,108 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VERSION="${1:-1.0.0}"
 IDENTIFIER="com.hypermynds.hmtech.bootstrap"
 SIGNING_IDENTITY="Installer Certificate (Hypermynds)"
+
 DIST_DIR="$SCRIPT_DIR/dist"
 OUTPUT_PKG="$DIST_DIR/hm-tech-bootstrap-$VERSION.pkg"
-VERSION_FILE="$SCRIPT_DIR/payload/Library/Hypermynds/HMTech/VERSION"
 
 if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "La versione deve avere il formato X.Y.Z" >&2
   exit 1
 fi
 
+for COMMAND in security pkgbuild pkgutil shasum ditto plutil; do
+  if ! command -v "$COMMAND" >/dev/null 2>&1; then
+    echo "Comando richiesto non trovato: $COMMAND" >&2
+    exit 1
+  fi
+done
+
 if ! security find-identity -v | grep -Fq "$SIGNING_IDENTITY"; then
   echo "Identità di firma non trovata: $SIGNING_IDENTITY" >&2
   exit 1
 fi
 
+BUILD_DIR="$(
+  mktemp -d "${TMPDIR:-/tmp}/hm-tech-bootstrap.XXXXXX"
+)"
+STAGING_ROOT="$BUILD_DIR/root"
+STAGING_SCRIPTS="$BUILD_DIR/scripts"
+
+cleanup() {
+  if [[ -n "${BUILD_DIR:-}" && -d "$BUILD_DIR" ]]; then
+    rm -rf "$BUILD_DIR"
+  fi
+}
+
+trap cleanup EXIT
+
+COPYFILE_DISABLE=1 /usr/bin/ditto \
+  --norsrc --noextattr --noqtn \
+  "$SCRIPT_DIR/payload" \
+  "$STAGING_ROOT"
+
+COPYFILE_DISABLE=1 /usr/bin/ditto \
+  --norsrc --noextattr --noqtn \
+  "$SCRIPT_DIR/scripts" \
+  "$STAGING_SCRIPTS"
+
+VERSION_FILE="$STAGING_ROOT/Library/Hypermynds/HMTech/VERSION"
+
 if [[ ! -f "$VERSION_FILE" ]]; then
-  echo "File VERSION non trovato: $VERSION_FILE" >&2
+  echo "File VERSION non trovato nel payload." >&2
   exit 1
 fi
 
-ORIGINAL_VERSION="$(<"$VERSION_FILE")"
-
-restore_version_file() {
-  printf '%s\n' "$ORIGINAL_VERSION" >"$VERSION_FILE"
-}
-
-trap restore_version_file EXIT
 printf '%s\n' "$VERSION" >"$VERSION_FILE"
+
+MARKER_APP="$STAGING_ROOT/Applications/Utilities/HM Tech Bootstrap.app"
+MARKER_INFO="$MARKER_APP/Contents/Info.plist"
+MARKER_EXECUTABLE="$MARKER_APP/Contents/MacOS/HMTechBootstrap"
+
+if [[ ! -f "$MARKER_INFO" || ! -f "$MARKER_EXECUTABLE" ]]; then
+  echo "App-marker incompleta nel payload." >&2
+  exit 1
+fi
+
+/usr/bin/plutil \
+  -replace CFBundleShortVersionString \
+  -string "$VERSION" \
+  "$MARKER_INFO"
+
+/usr/bin/plutil \
+  -replace CFBundleVersion \
+  -string "$VERSION" \
+  "$MARKER_INFO"
+
+/bin/chmod 0755 "$MARKER_EXECUTABLE"
+/bin/chmod 0644 "$MARKER_INFO"
+
+/usr/bin/plutil -lint "$MARKER_INFO"
+
+/usr/bin/find "$BUILD_DIR" \
+  \( -name '._*' -o -name '.DS_Store' \) \
+  -delete
+
+/usr/bin/xattr -cr "$BUILD_DIR" 2>/dev/null || true
 
 mkdir -p "$DIST_DIR"
 rm -f "$OUTPUT_PKG"
 
 pkgbuild \
-  --root "$SCRIPT_DIR/payload" \
-  --scripts "$SCRIPT_DIR/scripts" \
+  --root "$STAGING_ROOT" \
+  --scripts "$STAGING_SCRIPTS" \
   --identifier "$IDENTIFIER" \
   --version "$VERSION" \
   --install-location / \
   --ownership recommended \
   --sign "$SIGNING_IDENTITY" \
   "$OUTPUT_PKG"
+
+if pkgutil --payload-files "$OUTPUT_PKG" |
+  grep -Eq '(^|/)\._|(^|/)\.DS_Store'; then
+  echo "Il pacchetto contiene ancora metadati indesiderati." >&2
+  exit 1
+fi
 
 echo
 pkgutil --check-signature "$OUTPUT_PKG"

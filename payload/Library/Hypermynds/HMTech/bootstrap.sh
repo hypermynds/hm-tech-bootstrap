@@ -40,6 +40,17 @@ case "$CONSOLE_USER" in
     ;;
 esac
 
+CONSOLE_HOME="$(
+  /usr/bin/dscl . \
+    -read "/Users/$CONSOLE_USER" NFSHomeDirectory 2>/dev/null |
+    /usr/bin/cut -d ' ' -f 2-
+)"
+
+if [[ -z "$CONSOLE_HOME" || ! -d "$CONSOLE_HOME" ]]; then
+  echo "Home directory non disponibile per $CONSOLE_USER; nuovo tentativo tra cinque minuti."
+  exit 0
+fi
+
 if [[ -x /opt/homebrew/bin/brew ]]; then
   BREW_BIN="/opt/homebrew/bin/brew"
 elif [[ -x /usr/local/bin/brew ]]; then
@@ -56,6 +67,11 @@ echo "Homebrew: $BREW_BIN"
 if ! /usr/bin/xcode-select -p >/dev/null 2>&1; then
   echo "AVVISO: Xcode Command Line Tools non rilevati."
 fi
+
+export HOME="$CONSOLE_HOME"
+export USER="$CONSOLE_USER"
+export LOGNAME="$CONSOLE_USER"
+export PATH="$(/usr/bin/dirname "$BREW_BIN"):/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 export HOMEBREW_NO_ANALYTICS=1
 export HOMEBREW_NO_AUTO_UPDATE=1
