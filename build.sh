@@ -15,7 +15,7 @@ if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   exit 1
 fi
 
-for COMMAND in security pkgbuild pkgutil shasum ditto plutil; do
+for COMMAND in security pkgbuild productbuild pkgutil shasum ditto plutil; do
   if ! command -v "$COMMAND" >/dev/null 2>&1; then
     echo "Comando richiesto non trovato: $COMMAND" >&2
     exit 1
@@ -32,6 +32,9 @@ BUILD_DIR="$(
 )"
 STAGING_ROOT="$BUILD_DIR/root"
 STAGING_SCRIPTS="$BUILD_DIR/scripts"
+
+COMPONENT_PKG="$BUILD_DIR/hm-tech-bootstrap-component.pkg"
+PRODUCT_EXPANDED="$BUILD_DIR/product-expanded"
 
 cleanup() {
   if [[ -n "${BUILD_DIR:-}" && -d "$BUILD_DIR" ]]; then
@@ -100,12 +103,25 @@ pkgbuild \
   --version "$VERSION" \
   --install-location / \
   --ownership recommended \
+  "$COMPONENT_PKG"
+
+if pkgutil --payload-files "$COMPONENT_PKG" |
+  grep -Eq '(^|/)\._|(^|/)\.DS_Store'; then
+  echo "Il component package contiene metadati indesiderati." >&2
+  exit 1
+fi
+
+productbuild \
+  --package "$COMPONENT_PKG" \
+  --identifier "$IDENTIFIER" \
+  --version "$VERSION" \
   --sign "$SIGNING_IDENTITY" \
   "$OUTPUT_PKG"
 
-if pkgutil --payload-files "$OUTPUT_PKG" |
-  grep -Eq '(^|/)\._|(^|/)\.DS_Store'; then
-  echo "Il pacchetto contiene ancora metadati indesiderati." >&2
+pkgutil --expand "$OUTPUT_PKG" "$PRODUCT_EXPANDED"
+
+if [[ ! -f "$PRODUCT_EXPANDED/Distribution" ]]; then
+  echo "Il product archive non contiene Distribution." >&2
   exit 1
 fi
 
