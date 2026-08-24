@@ -7,6 +7,8 @@ BREWFILE="$HM_DIR/Brewfile"
 VERSION_FILE="$HM_DIR/VERSION"
 LOG_FILE="/var/log/hypermynds-hmtech-bootstrap.log"
 
+TEMPFAIL=75
+
 umask 022
 exec >>"$LOG_FILE" 2>&1
 
@@ -36,7 +38,7 @@ CONSOLE_USER="$(/usr/bin/stat -f '%Su' /dev/console 2>/dev/null || true)"
 case "$CONSOLE_USER" in
   ""|root|loginwindow|_mbsetupuser)
     echo "Nessun utente console disponibile; nuovo tentativo tra cinque minuti."
-    exit 0
+    exit "$TEMPFAIL"
     ;;
 esac
 
@@ -48,7 +50,7 @@ CONSOLE_HOME="$(
 
 if [[ -z "$CONSOLE_HOME" || ! -d "$CONSOLE_HOME" ]]; then
   echo "Home directory non disponibile per $CONSOLE_USER; nuovo tentativo tra cinque minuti."
-  exit 0
+  exit "$TEMPFAIL"
 fi
 
 if [[ -x /opt/homebrew/bin/brew ]]; then
@@ -57,7 +59,7 @@ elif [[ -x /usr/local/bin/brew ]]; then
   BREW_BIN="/usr/local/bin/brew"
 else
   echo "Homebrew non ancora disponibile; nuovo tentativo tra cinque minuti."
-  exit 0
+  exit "$TEMPFAIL"
 fi
 
 echo "Versione bootstrap: $BOOTSTRAP_VERSION"
