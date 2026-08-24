@@ -1,4 +1,5 @@
-cask "rstudio"
-cask "visual-studio-code"
 cask "docker-desktop"
 cask "cyberduck"
+cask "pgadmin4"
+cask "rstudio"
+cask "visual-studio-code"

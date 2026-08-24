@@ -258,17 +258,20 @@ install_marker() {
 
 cask_artifact_present() {
   case "$1" in
+    cyberduck)
+      [[ -d /Applications/Cyberduck.app ]]
+      ;;
+    docker-desktop)
+      [[ -d /Applications/Docker.app ]]
+      ;;
+    pgadmin4)
+      [[ -d "/Applications/pgAdmin 4.app" ]]
+      ;;
     rstudio)
       [[ -d /Applications/RStudio.app ]]
       ;;
     visual-studio-code)
       [[ -d "/Applications/Visual Studio Code.app" ]]
-      ;;
-    docker-desktop)
-      [[ -d /Applications/Docker.app ]]
-      ;;
-    cyberduck)
-      [[ -d /Applications/Cyberduck.app ]]
       ;;
     *)
       echo "Nessuna regola conservativa definita per il cask: $1"
