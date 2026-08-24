@@ -5,28 +5,41 @@ set -euo pipefail
 HM_DIR="/Library/Hypermynds/HMTech"
 PLIST="/Library/LaunchDaemons/com.hypermynds.hmtech.bootstrap.plist"
 LABEL="com.hypermynds.hmtech.bootstrap"
+
+MARKER_TEMPLATE="$HM_DIR/MarkerTemplate"
+MARKER_INFO="$MARKER_TEMPLATE/Info.plist"
+MARKER_EXECUTABLE="$MARKER_TEMPLATE/HMTechBootstrap"
 MARKER_APP="/Applications/Utilities/HM Tech Bootstrap.app"
 
 /usr/sbin/chown -R root:wheel "$HM_DIR"
-/bin/chmod 0755 "$HM_DIR" "$HM_DIR/bootstrap.sh"
-/bin/chmod 0644 "$HM_DIR/Brewfile" "$HM_DIR/VERSION"
+
+if [[ ! -f "$MARKER_INFO" || ! -f "$MARKER_EXECUTABLE" ]]; then
+  echo "Template dell’app-marker incompleto." >&2
+  exit 1
+fi
+
+/bin/chmod 0755 \
+  "$HM_DIR" \
+  "$HM_DIR/bootstrap.sh" \
+  "$MARKER_TEMPLATE" \
+  "$MARKER_EXECUTABLE"
+
+/bin/chmod 0644 \
+  "$HM_DIR/Brewfile" \
+  "$HM_DIR/VERSION" \
+  "$MARKER_INFO"
 
 /usr/sbin/chown root:wheel "$PLIST"
 /bin/chmod 0644 "$PLIST"
 
-if [[ ! -d "$MARKER_APP" ]]; then
-  echo "App-marker non trovata: $MARKER_APP" >&2
-  exit 1
+# Rimuove il marker della versione precedente. Il bootstrap lo ricreerà
+# soltanto dopo avere verificato Homebrew e completato la configurazione.
+if [[ -e "$MARKER_APP" || -L "$MARKER_APP" ]]; then
+  /bin/rm -rf "$MARKER_APP"
 fi
 
-/usr/sbin/chown -R root:wheel "$MARKER_APP"
-/bin/chmod 0755 "$MARKER_APP/Contents/MacOS/HMTechBootstrap"
-/bin/chmod 0644 "$MARKER_APP/Contents/Info.plist"
-
 # Docker Desktop pubblica utility in /usr/local. Sui Mac Apple Silicon nuovi
-# prepariamo le directory con i permessi del gruppo admin, evitando richieste
-# interattive per i link CLI. Su Intel /usr/local è anche il prefisso Homebrew:
-# non ne modifichiamo proprietà o permessi.
+# prepariamo le directory con i permessi del gruppo admin.
 if [[ "$(/usr/bin/uname -m)" == "arm64" ]]; then
   /bin/mkdir -p /usr/local/bin /usr/local/cli-plugins
   /usr/sbin/chown root:admin /usr/local/bin /usr/local/cli-plugins

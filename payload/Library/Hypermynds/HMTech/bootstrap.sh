@@ -7,6 +7,12 @@ BREWFILE="$HM_DIR/Brewfile"
 VERSION_FILE="$HM_DIR/VERSION"
 LOG_FILE="/var/log/hypermynds-hmtech-bootstrap.log"
 
+MARKER_TEMPLATE="$HM_DIR/MarkerTemplate"
+MARKER_APP="/Applications/Utilities/HM Tech Bootstrap.app"
+MARKER_IDENTIFIER="com.hypermynds.hmtech.bootstrap"
+
+BREW_RECEIPT_ID="sh.brew.homebrew"
+
 TEMPFAIL=75
 
 umask 022
@@ -19,7 +25,14 @@ if [[ ! -r "$VERSION_FILE" ]]; then
   exit 1
 fi
 
-BOOTSTRAP_VERSION="$(/usr/bin/tr -d '[:space:]' <"$VERSION_FILE")"
+if [[ ! -r "$BREWFILE" ]]; then
+  echo "Brewfile non disponibile: $BREWFILE"
+  exit 1
+fi
+
+BOOTSTRAP_VERSION="$(
+  /usr/bin/tr -d '[:space:]' <"$VERSION_FILE"
+)"
 
 if [[ ! "$BOOTSTRAP_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "Versione bootstrap non valida: $BOOTSTRAP_VERSION"
@@ -28,12 +41,44 @@ fi
 
 DONE_FILE="$HM_DIR/.completed-$BOOTSTRAP_VERSION"
 
-if [[ -f "$DONE_FILE" ]]; then
+marker_is_current() {
+  local marker_info="$MARKER_APP/Contents/Info.plist"
+  local marker_identifier
+  local marker_version
+
+  [[ -f "$marker_info" ]] || return 1
+
+  marker_identifier="$(
+    /usr/bin/plutil \
+      -extract CFBundleIdentifier raw \
+      "$marker_info" 2>/dev/null ||
+      true
+  )"
+
+  marker_version="$(
+    /usr/bin/plutil \
+      -extract CFBundleShortVersionString raw \
+      "$marker_info" 2>/dev/null ||
+      true
+  )"
+
+  [[ "$marker_identifier" == "$MARKER_IDENTIFIER" ]] &&
+    [[ "$marker_version" == "$BOOTSTRAP_VERSION" ]]
+}
+
+if [[ -f "$DONE_FILE" ]] && marker_is_current; then
   echo "Bootstrap $BOOTSTRAP_VERSION già completato."
   exit 0
 fi
 
-CONSOLE_USER="$(/usr/bin/stat -f '%Su' /dev/console 2>/dev/null || true)"
+if [[ -f "$DONE_FILE" ]]; then
+  echo "Completamento presente ma app-marker assente o obsoleta; verrà ripristinata."
+fi
+
+CONSOLE_USER="$(
+  /usr/bin/stat -f '%Su' /dev/console 2>/dev/null ||
+    true
+)"
 
 case "$CONSOLE_USER" in
   ""|root|loginwindow|_mbsetupuser)
@@ -81,6 +126,134 @@ export HOMEBREW_NO_INSTALL_UPGRADE=1
 
 brew_user() {
   "$BREW_BIN" as-console-user "$@"
+}
+
+if ! /usr/sbin/pkgutil \
+  --pkg-info "$BREW_RECEIPT_ID" >/dev/null 2>&1; then
+  echo "Receipt $BREW_RECEIPT_ID non ancora disponibile; nuovo tentativo tra cinque minuti."
+  exit "$TEMPFAIL"
+fi
+
+BREW_RECEIPT_VERSION="$(
+  /usr/sbin/pkgutil \
+    --pkg-info-plist "$BREW_RECEIPT_ID" 2>/dev/null |
+    /usr/bin/plutil -extract pkg-version raw - 2>/dev/null ||
+    true
+)"
+
+if [[ -z "$BREW_RECEIPT_VERSION" ]]; then
+  echo "Impossibile determinare la versione del receipt Homebrew."
+  exit "$TEMPFAIL"
+fi
+
+case "$(/usr/bin/uname -m)" in
+  arm64)
+    EXPECTED_BREW_PREFIX="/opt/homebrew"
+    ;;
+  x86_64)
+    EXPECTED_BREW_PREFIX="/usr/local"
+    ;;
+  *)
+    echo "Architettura Mac non supportata: $(/usr/bin/uname -m)"
+    exit 1
+    ;;
+esac
+
+BREW_PREFIX="$(
+  brew_user --prefix 2>/dev/null ||
+    true
+)"
+
+if [[ "$BREW_PREFIX" != "$EXPECTED_BREW_PREFIX" ]]; then
+  echo "Prefisso Homebrew inatteso: '$BREW_PREFIX'; atteso: '$EXPECTED_BREW_PREFIX'."
+  exit 1
+fi
+
+BREW_RUNTIME_VERSION="$(
+  brew_user --version 2>/dev/null |
+    /usr/bin/head -n 1 ||
+    true
+)"
+
+if [[ -z "$BREW_RUNTIME_VERSION" ]]; then
+  echo "Homebrew non risponde correttamente; nuovo tentativo tra cinque minuti."
+  exit "$TEMPFAIL"
+fi
+
+echo "Receipt Homebrew: $BREW_RECEIPT_VERSION"
+echo "Versione Homebrew: $BREW_RUNTIME_VERSION"
+echo "Prefisso Homebrew: $BREW_PREFIX"
+
+install_marker() {
+  local marker_info_source="$MARKER_TEMPLATE/Info.plist"
+  local marker_executable_source="$MARKER_TEMPLATE/HMTechBootstrap"
+  local marker_tmp="/Applications/Utilities/.HM Tech Bootstrap.app.$$.tmp"
+  local marker_contents="$marker_tmp/Contents"
+  local copied_identifier
+
+  if [[ ! -f "$marker_info_source" ||
+        ! -f "$marker_executable_source" ]]; then
+    echo "Template dell’app-marker incompleto."
+    return 1
+  fi
+
+  /bin/rm -rf "$marker_tmp"
+  /bin/mkdir -p "$marker_contents/MacOS"
+
+  if ! /usr/bin/install \
+      -m 0644 \
+      "$marker_info_source" \
+      "$marker_contents/Info.plist" ||
+    ! /usr/bin/install \
+      -m 0755 \
+      "$marker_executable_source" \
+      "$marker_contents/MacOS/HMTechBootstrap"; then
+    /bin/rm -rf "$marker_tmp"
+    return 1
+  fi
+
+  if ! /usr/bin/plutil \
+      -replace CFBundleShortVersionString \
+      -string "$BOOTSTRAP_VERSION" \
+      "$marker_contents/Info.plist" ||
+    ! /usr/bin/plutil \
+      -replace CFBundleVersion \
+      -string "$BOOTSTRAP_VERSION" \
+      "$marker_contents/Info.plist"; then
+    /bin/rm -rf "$marker_tmp"
+    return 1
+  fi
+
+  copied_identifier="$(
+    /usr/bin/plutil \
+      -extract CFBundleIdentifier raw \
+      "$marker_contents/Info.plist" 2>/dev/null ||
+      true
+  )"
+
+  if [[ "$copied_identifier" != "$MARKER_IDENTIFIER" ]]; then
+    echo "Bundle ID dell’app-marker non valido: $copied_identifier"
+    /bin/rm -rf "$marker_tmp"
+    return 1
+  fi
+
+  if ! /usr/bin/plutil -lint \
+      "$marker_contents/Info.plist" ||
+    ! /usr/sbin/chown -R root:wheel "$marker_tmp"; then
+    /bin/rm -rf "$marker_tmp"
+    return 1
+  fi
+
+  if [[ -e "$MARKER_APP" || -L "$MARKER_APP" ]]; then
+    /bin/rm -rf "$MARKER_APP"
+  fi
+
+  if ! /bin/mv "$marker_tmp" "$MARKER_APP"; then
+    /bin/rm -rf "$marker_tmp"
+    return 1
+  fi
+
+  return 0
 }
 
 cask_artifact_present() {
@@ -154,7 +327,11 @@ while IFS= read -r FORMULA; do
     echo "Installazione della formula $FORMULA non riuscita; verrà riprovata."
     exit 1
   fi
-done < <(/usr/bin/sed -nE 's/^[[:space:]]*brew[[:space:]]+"([^"]+)".*/\1/p' "$BREWFILE")
+done < <(
+  /usr/bin/sed -nE \
+    's/^[[:space:]]*brew[[:space:]]+"([^"]+)".*/\1/p' \
+    "$BREWFILE"
+)
 
 while IFS= read -r CASK; do
   [[ -z "$CASK" ]] && continue
@@ -163,17 +340,42 @@ while IFS= read -r CASK; do
     echo "Installazione del cask $CASK non riuscita; verrà riprovata."
     exit 1
   fi
-done < <(/usr/bin/sed -nE 's/^[[:space:]]*cask[[:space:]]+"([^"]+)".*/\1/p' "$BREWFILE")
+done < <(
+  /usr/bin/sed -nE \
+    's/^[[:space:]]*cask[[:space:]]+"([^"]+)".*/\1/p' \
+    "$BREWFILE"
+)
 
-{
+DONE_TMP="$DONE_FILE.tmp.$$"
+
+if ! {
   echo "version=$BOOTSTRAP_VERSION"
   echo "completed_at=$(/bin/date -u '+%Y-%m-%dT%H:%M:%SZ')"
   echo "console_user=$CONSOLE_USER"
   echo "brew=$BREW_BIN"
-} >"$DONE_FILE"
+  echo "brew_prefix=$BREW_PREFIX"
+  echo "brew_receipt=$BREW_RECEIPT_ID"
+  echo "brew_receipt_version=$BREW_RECEIPT_VERSION"
+  echo "brew_runtime_version=$BREW_RUNTIME_VERSION"
+} >"$DONE_TMP"; then
+  echo "Impossibile creare il file di completamento."
+  /bin/rm -f "$DONE_TMP"
+  exit 1
+fi
 
-/usr/sbin/chown root:wheel "$DONE_FILE"
-/bin/chmod 0644 "$DONE_FILE"
+if ! /usr/sbin/chown root:wheel "$DONE_TMP" ||
+  ! /bin/chmod 0644 "$DONE_TMP" ||
+  ! /bin/mv -f "$DONE_TMP" "$DONE_FILE"; then
+  echo "Impossibile finalizzare il file di completamento."
+  /bin/rm -f "$DONE_TMP"
+  exit 1
+fi
+
+if ! install_marker; then
+  echo "Creazione dell’app-marker non riuscita; verrà riprovata."
+  /bin/rm -f "$DONE_FILE"
+  exit 1
+fi
 
 echo "HM Tech Bootstrap $BOOTSTRAP_VERSION completato."
 exit 0

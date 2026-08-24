@@ -63,12 +63,21 @@ fi
 
 printf '%s\n' "$VERSION" >"$VERSION_FILE"
 
-MARKER_APP="$STAGING_ROOT/Applications/Utilities/HM Tech Bootstrap.app"
-MARKER_INFO="$MARKER_APP/Contents/Info.plist"
-MARKER_EXECUTABLE="$MARKER_APP/Contents/MacOS/HMTechBootstrap"
+MARKER_TEMPLATE="$STAGING_ROOT/Library/Hypermynds/HMTech/MarkerTemplate"
+MARKER_INFO="$MARKER_TEMPLATE/Info.plist"
+MARKER_EXECUTABLE="$MARKER_TEMPLATE/HMTechBootstrap"
 
 if [[ ! -f "$MARKER_INFO" || ! -f "$MARKER_EXECUTABLE" ]]; then
   echo "App-marker incompleta nel payload." >&2
+  exit 1
+fi
+
+MARKER_IDENTIFIER="$(
+  /usr/bin/plutil -extract CFBundleIdentifier raw "$MARKER_INFO"
+)"
+
+if [[ "$MARKER_IDENTIFIER" != "$IDENTIFIER" ]]; then
+  echo "Bundle ID del marker non valido: $MARKER_IDENTIFIER" >&2
   exit 1
 fi
 
