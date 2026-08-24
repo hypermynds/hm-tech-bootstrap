@@ -8,7 +8,7 @@ LABEL="com.hypermynds.hmtech.bootstrap"
 
 /usr/sbin/chown -R root:wheel "$HM_DIR"
 /bin/chmod 0755 "$HM_DIR" "$HM_DIR/bootstrap.sh"
-/bin/chmod 0644 "$HM_DIR/Brewfile"
+/bin/chmod 0644 "$HM_DIR/Brewfile" "$HM_DIR/VERSION"
 
 /usr/sbin/chown root:wheel "$PLIST"
 /bin/chmod 0644 "$PLIST"
