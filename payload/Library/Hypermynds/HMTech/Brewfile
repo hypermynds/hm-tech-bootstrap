@@ -1,5 +1,7 @@
-cask "docker-desktop"
 cask "cyberduck"
+cask "docker-desktop"
+cask "font-fira-code"
+cask "obsidian"
 cask "pgadmin4"
 cask "rstudio"
 cask "visual-studio-code"

@@ -264,6 +264,18 @@ cask_artifact_present() {
     docker-desktop)
       [[ -d /Applications/Docker.app ]]
       ;;
+    font-fira-code)
+      [[ -f "$CONSOLE_HOME/Library/Fonts/FiraCode-Bold.ttf" ||
+         -f "$CONSOLE_HOME/Library/Fonts/FiraCode-Light.ttf" ||
+         -f "$CONSOLE_HOME/Library/Fonts/FiraCode-Medium.ttf" ||
+         -f "$CONSOLE_HOME/Library/Fonts/FiraCode-Regular.ttf" ||
+         -f "$CONSOLE_HOME/Library/Fonts/FiraCode-Retina.ttf" ||
+         -f "$CONSOLE_HOME/Library/Fonts/FiraCode-SemiBold.ttf" ||
+         -f "$CONSOLE_HOME/Library/Fonts/FiraCode-VF.ttf" ]]
+      ;;
+    obsidian)
+      [[ -d "/Applications/Obsidian.app" ]]
+      ;;
     pgadmin4)
       [[ -d "/Applications/pgAdmin 4.app" ]]
       ;;

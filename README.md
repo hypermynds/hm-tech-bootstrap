@@ -14,6 +14,8 @@ in either order.
 - Visual Studio Code
 - Docker Desktop
 - Cyberduck
+- Obsidian
+- Fira Code
 
 The R runtime is intentionally outside this bootstrap. It should be deployed as
 a separate, versioned package through the MDM using the official signed CRAN
@@ -148,7 +150,7 @@ Verify the completion marker and installed software:
 
 ```bash
 cat /Library/Hypermynds/HMTech/.completed-1.0.1
-brew list --cask rstudio visual-studio-code docker-desktop cyberduck
+brew list --cask rstudio visual-studio-code docker-desktop cyberduck obsidian font-fira-code
 ```
 
 The independently managed R runtime can be verified with:
